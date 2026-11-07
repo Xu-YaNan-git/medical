@@ -1,0 +1,18 @@
+# BuildKit 按 Dockerfile 名读取本文件（上下文 = /workspace）。白名单：只放 UI 与 web 配置
+*
+!medical-patient-triage
+!medical-patient-triage/**
+!medical-assistant-prototype
+!medical-assistant-prototype/**
+!medical-deploy
+medical-deploy/*
+!medical-deploy/web
+!medical-deploy/web/**
+**/.venv
+**/__pycache__
+**/node_modules
+**/data
+**/*.db
+**/*.sqlite*
+**/.git
+**/.DS_Store
