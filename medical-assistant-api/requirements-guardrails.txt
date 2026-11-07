@@ -1,0 +1,4 @@
+# S2 guardrails package (local dev: editable install into this API's .venv)
+# Docker images install it non-editable from /opt/medical-guardrails instead.
+-e /workspace/medical-guardrails
+jsonschema>=4.0
