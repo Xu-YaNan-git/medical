@@ -114,3 +114,15 @@ UI 走同源反代，其他机器直接打开 `http://<宿主机IP>:8765/`、`:3
 - `docker compose config` 通过（含 `additional_contexts`，以及 `GUARDRAILS_SRC=./guardrails-missing` 的占位分支）；`deploy.sh` 通过 `bash -n`。
 - **镜像未重建验证**：当前会话用户无 `/var/run/docker.sock` 权限（permission denied），没有执行 `./deploy.sh up`。有权限的环境请执行 `./deploy.sh up`，然后确认两端 `/health` 中 `guardrails.packageLoaded=true`、`version=0.1.0`。
 - 本机 venv 进程已验证：护栏生效，5 套冒烟见 S2 报告。
+
+
+## GitHub 文本导入说明
+
+首次拉取后请设置脚本执行权限（上传接口不保证执行位）：
+
+```bash
+# 在仓库根目录执行
+chmod +x medical-start-all.sh medical-deploy/deploy.sh medical-e2e-smoke/*.sh
+```
+
+本次源码导入范围、安全排除、S2 结果与已知限制见根目录 `IMPORT-NOTES.md`。根 main 分支原有 README 未改动。
