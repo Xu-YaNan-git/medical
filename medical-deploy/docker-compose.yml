@@ -1,0 +1,89 @@
+# AI 医疗智能助手 · 演示四端一键部署（患者 API / 医生 API / 两个静态 UI 合在 web）
+# 用法：./deploy.sh up   （或 cp .env.example .env && docker compose up -d --build）
+# 变量来源：同目录 .env（compose 自动读取用于 ${...} 插值）；不存在时全部走默认值。
+# 密钥只在运行时以环境变量注入 API 容器，不进镜像、web 容器拿不到。
+name: medical-demo
+
+x-api-common: &api-common
+  restart: unless-stopped
+  environment: &api-env
+    APP_ENV: ${APP_ENV:-demo}
+    STORE_BACKEND: ${STORE_BACKEND:-sqlite}
+    SQLITE_PATH: /data/app.db
+    MASK_SENSITIVE: ${MASK_SENSITIVE:-1}
+    ALLOW_RESET_IN_PROD: ${ALLOW_RESET_IN_PROD:-}
+    CORS_ORIGIN_REGEX: ${CORS_ORIGIN_REGEX:-}
+    LLM_API_KEY: ${LLM_API_KEY:-}
+    LLM_BASE_URL: ${LLM_BASE_URL:-}
+    LLM_MODEL: ${LLM_MODEL:-gpt-5.6-sol}
+    GUARDRAILS_ENABLED: ${GUARDRAILS_ENABLED:-1}
+    GUARDRAILS_LLM: ${GUARDRAILS_LLM:-}
+
+services:
+  patient-api:
+    <<: *api-common
+    build:
+      context: ../medical-patient-api
+      # S2：护栏包作为额外构建上下文（BuildKit / Compose ≥ 2.17）；Dockerfile 里 COPY --from=guardrails
+      additional_contexts:
+        guardrails: ${GUARDRAILS_SRC:-../medical-guardrails}
+      dockerfile: ../medical-deploy/patient-api/Dockerfile
+    image: medical-demo/patient-api:latest
+    ports:
+      - "${PATIENT_API_PORT:-8001}:8001"
+    volumes:
+      - patient-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=4).status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 6
+
+  doctor-api:
+    <<: *api-common
+    build:
+      context: ../medical-assistant-api
+      # S2：护栏包作为额外构建上下文（BuildKit / Compose ≥ 2.17）；Dockerfile 里 COPY --from=guardrails
+      additional_contexts:
+        guardrails: ${GUARDRAILS_SRC:-../medical-guardrails}
+      dockerfile: ../medical-deploy/doctor-api/Dockerfile
+    image: medical-demo/doctor-api:latest
+    environment:
+      <<: *api-env
+      # 容器网络内用服务名访问患者 API
+      PATIENT_API_BASE: http://patient-api:8001
+    ports:
+      - "${DOCTOR_API_PORT:-8000}:8000"
+    volumes:
+      - doctor-data:/data
+    depends_on:
+      patient-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 6
+
+  # 静态 UI + 同源反代（/patient-api/ → patient-api:8001，/doctor-api/ → doctor-api:8000）
+  # web/ 目录（Dockerfile、nginx.conf、config/*.js、Dockerfile.dockerignore）由「产品 UI 原型」维护
+  web:
+    build:
+      context: ..
+      dockerfile: medical-deploy/web/Dockerfile
+    image: medical-demo/web:latest
+    restart: unless-stopped
+    ports:
+      - "${PATIENT_UI_PORT:-8765}:8765"
+      - "${DOCTOR_UI_PORT:-36967}:36967"
+    depends_on:
+      patient-api:
+        condition: service_healthy
+      doctor-api:
+        condition: service_healthy
+
+volumes:
+  patient-data:
+  doctor-data:
