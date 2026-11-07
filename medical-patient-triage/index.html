@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5" />
+  <meta name="theme-color" content="#0d9488" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="导诊台" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="description" content="患者端智能导诊与预约助手。辅助导诊，不能替代面诊。" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <title>导诊台 · 智能就医助手</title>
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar" id="topbar">
+      <button type="button" class="btn-icon back-btn hidden" id="btnBack" aria-label="返回">←</button>
+      <div class="topbar-title">
+        <span class="logo-mark" aria-hidden="true">诊</span>
+        <div class="topbar-text">
+          <h1 id="pageTitle">导诊台</h1>
+          <p class="subtitle" id="pageSubtitle">辅助导诊，不能替代面诊</p>
+        </div>
+      </div>
+      <label class="demo-toggle" title="演示模式">
+        <input type="checkbox" id="demoModeToggle" />
+        <span class="demo-toggle-ui" aria-hidden="true"></span>
+        <span class="demo-toggle-label">演示</span>
+      </label>
+      <button type="button" class="btn-icon msg-bell" id="btnMessages" data-nav="messages" aria-label="消息中心">
+        <span aria-hidden="true">🔔</span>
+        <span class="badge hidden" id="msgBadge">0</span>
+      </button>
+    </header>
+
+    <div class="demo-bar hidden" id="demoBar" role="region" aria-label="黄金路径演示">
+      <div class="demo-bar-head">
+        <strong>演示模式</strong>
+        <span class="demo-disclaimer">演示链路，非真实就医</span>
+        <button type="button" class="btn sm ghost" id="btnDemoReset">重置演示数据</button>
+      </div>
+      <ol class="demo-steps" id="demoSteps">
+        <li class="demo-step" data-step="triage">
+          <span class="demo-step-check" aria-hidden="true"></span>
+          <span class="demo-step-num">①</span>
+          <span class="demo-step-label">导诊</span>
+          <button type="button" class="btn sm primary demo-go" data-demo-go="triage">去做</button>
+        </li>
+        <li class="demo-step" data-step="appoint">
+          <span class="demo-step-check" aria-hidden="true"></span>
+          <span class="demo-step-num">②</span>
+          <span class="demo-step-label">预约</span>
+          <button type="button" class="btn sm primary demo-go" data-demo-go="appoint">去做</button>
+        </li>
+        <li class="demo-step" data-step="consult">
+          <span class="demo-step-check" aria-hidden="true"></span>
+          <span class="demo-step-num">③</span>
+          <span class="demo-step-label">AI问诊/预问诊</span>
+          <button type="button" class="btn sm primary demo-go" data-demo-go="consult">去做</button>
+        </li>
+        <li class="demo-step" data-step="dc">
+          <span class="demo-step-check" aria-hidden="true"></span>
+          <span class="demo-step-num">④</span>
+          <span class="demo-step-label">发起图文接诊</span>
+          <button type="button" class="btn sm primary demo-go" data-demo-go="dc">去做</button>
+        </li>
+        <li class="demo-step" data-step="messages">
+          <span class="demo-step-check" aria-hidden="true"></span>
+          <span class="demo-step-num">⑤</span>
+          <span class="demo-step-label">看消息</span>
+          <button type="button" class="btn sm primary demo-go" data-demo-go="messages">去做</button>
+        </li>
+      </ol>
+    </div>
+
+    <div class="disclaimer-bar" role="note">
+      <span aria-hidden="true">⚠️</span>
+      <span>辅助导诊，不能替代面诊；急危重症请立即前往急诊或拨打 120</span>
+    </div>
+
+    <main class="main" id="main">
+      <!-- HOME -->
+      <section class="view active" id="view-home" data-title="导诊台" data-sub="智能就医助手">
+        <div class="hero">
+          <div class="hero-text">
+            <p class="eyebrow">患者端 · H5 / PWA · M10 慢病</p>
+            <h2>你好，需要怎样的帮助？</h2>
+            <p>诊前到诊后全流程：导诊预约、检查检验、药品配送到家、图文/视频接诊，以及缴费与合规设置。</p>
+          </div>
+          <div class="hero-illu" aria-hidden="true">🩺</div>
+        </div>
+
+        <button type="button" class="patient-chip" id="homePatientChip" data-nav="patients">
+          <span class="patient-chip-avatar" id="homePatientAvatar">本</span>
+          <span class="patient-chip-body">
+            <strong id="homePatientName">加载中…</strong>
+            <small id="homePatientMeta">点击管理就诊人</small>
+          </span>
+          <span class="patient-chip-action">切换</span>
+        </button>
+
+        <div class="profile-summary-card hidden" id="homeProfileCard">
+          <div class="profile-summary-head">
+            <strong>健康档案摘要</strong>
+            <button type="button" class="link-btn" data-nav="profile">编辑</button>
+          </div>
+          <div class="profile-tags" id="homeProfileTags"></div>
+        </div>
+
+        <div class="card-grid">
+          <button type="button" class="entry-card" data-nav="symptom">
+            <span class="entry-icon" style="--c:#0d9488">📋</span>
+            <span class="entry-body">
+              <strong>症状导诊</strong>
+              <small>填写主诉与症状，推荐合适科室</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+          <button type="button" class="entry-card" data-nav="chat">
+            <span class="entry-icon" style="--c:#2563eb">💬</span>
+            <span class="entry-body">
+              <strong>智能问诊</strong>
+              <small>多轮对话澄清症状，生成导诊小结</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+          <button type="button" class="entry-card" data-nav="dc-start" data-mode="text">
+            <span class="entry-icon" style="--c:#0ea5e9">📝</span>
+            <span class="entry-body">
+              <strong>图文问诊</strong>
+              <small>真实医生接诊 Mock · 排队聊天</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+          <button type="button" class="entry-card" data-nav="dc-start" data-mode="video">
+            <span class="entry-icon" style="--c:#7c3aed">📹</span>
+            <span class="entry-body">
+              <strong>视频问诊</strong>
+              <small>占位画面 · 模拟接通（非真实通话）</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+          <button type="button" class="entry-card" data-nav="dc-list">
+            <span class="entry-icon" style="--c:#0369a1">🗂️</span>
+            <span class="entry-body">
+              <strong>我的接诊</strong>
+              <small>进行中 / 已结束会话回看</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+          <button type="button" class="entry-card" data-nav="appoint">
+            <span class="entry-icon" style="--c:#7c3aed">📅</span>
+            <span class="entry-body">
+              <strong>预约挂号</strong>
+              <small>选科室、医生与时段</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+          <button type="button" class="entry-card" data-nav="exam">
+            <span class="entry-icon" style="--c:#0891b2">🔬</span>
+            <span class="entry-body">
+              <strong>检查检验预约</strong>
+              <small>选项目 · 时段 · 改约取消</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+          <button type="button" class="entry-card" data-nav="exam-mine">
+            <span class="entry-icon" style="--c:#0e7490">📋</span>
+            <span class="entry-body">
+              <strong>我的检查</strong>
+              <small>已预约 · 改约 / 取消</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+
+          <button type="button" class="entry-card" data-nav="pharmacy">
+            <span class="entry-icon" style="--c:#b45309">📦</span>
+            <span class="entry-body">
+              <strong>药品配送</strong>
+              <small>处方购药单 · 选地址 · 物流追踪</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+          <button type="button" class="entry-card" data-nav="pharmacy-deliveries">
+            <span class="entry-icon" style="--c:#c2410c">🚚</span>
+            <span class="entry-body">
+              <strong>我的配送</strong>
+              <small>待发货 / 运输中 / 已送达</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+          <button type="button" class="entry-card" data-nav="patients">
+            <span class="entry-icon" style="--c:#ea580c">👨‍👩‍👧</span>
+            <span class="entry-body">
+              <strong>就诊人</strong>
+              <small>添加/切换本人与家人</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+          <button type="button" class="entry-card" data-nav="profile">
+            <span class="entry-icon" style="--c:#0891b2">🗂️</span>
+            <span class="entry-body">
+              <strong>健康档案</strong>
+              <small>过敏史、慢病、用药</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+
+          <button type="button" class="entry-card" data-nav="chronic">
+            <span class="entry-icon" style="--c:#be123c">💓</span>
+            <span class="entry-body">
+              <strong>慢病打卡</strong>
+              <small>血压 / 血糖 · 近 7 日趋势</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+          <button type="button" class="entry-card" data-nav="reports">
+            <span class="entry-icon" style="--c:#db2777">🧪</span>
+            <span class="entry-body">
+              <strong>报告中心</strong>
+              <small>检验检查与 AI 解读</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+          <button type="button" class="entry-card" data-nav="waiting">
+            <span class="entry-icon" style="--c:#0284c7">🎫</span>
+            <span class="entry-body">
+              <strong>候诊报到</strong>
+              <small>队列状态与一键报到</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+          <button type="button" class="entry-card" data-nav="nav">
+            <span class="entry-icon" style="--c:#4f46e5">🗺️</span>
+            <span class="entry-body">
+              <strong>院内导航</strong>
+              <small>科室楼层与路线提示</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+          <button type="button" class="entry-card" data-nav="refills">
+            <span class="entry-icon" style="--c:#059669">💊</span>
+            <span class="entry-body">
+              <strong>复诊续方</strong>
+              <small>申请续方 · 进度查询（非处方）</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+          <button type="button" class="entry-card" data-nav="meds">
+            <span class="entry-icon" style="--c:#d97706">⏰</span>
+            <span class="entry-body">
+              <strong>用药提醒</strong>
+              <small>今日待服 · 开关提醒</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+          <button type="button" class="entry-card" data-nav="followups">
+            <span class="entry-icon" style="--c:#7c3aed">📝</span>
+            <span class="entry-body">
+              <strong>随访问卷</strong>
+              <small>填写问卷 · 查看历史</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+          <button type="button" class="entry-card" data-nav="bills">
+            <span class="entry-icon" style="--c:#0f766e">💳</span>
+            <span class="entry-body">
+              <strong>在线缴费</strong>
+              <small>待缴账单 · 模拟支付（演示）</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+          <button type="button" class="entry-card" data-nav="identity">
+            <span class="entry-icon" style="--c:#1d4ed8">🪪</span>
+            <span class="entry-body">
+              <strong>实名 / 就诊卡</strong>
+              <small>绑定占位 · 不接公安核验</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+          <button type="button" class="entry-card" data-nav="settings">
+            <span class="entry-icon" style="--c:#475569">⚙️</span>
+            <span class="entry-body">
+              <strong>设置与须知</strong>
+              <small>免责声明 · 操作须知 · 清除演示数据</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+          <button type="button" class="entry-card" data-nav="messages">
+            <span class="entry-icon" style="--c:#ca8a04">🔔</span>
+            <span class="entry-body">
+              <strong>消息中心</strong>
+              <small>预约提醒与报告通知</small>
+            </span>
+            <span class="entry-arrow" aria-hidden="true">→</span>
+          </button>
+        </div>
+
+        <div class="tips-card" id="installHint">
+          <h3>使用提示</h3>
+          <ul>
+            <li>出现胸痛、大出血、意识不清、严重呼吸困难等，请<strong>立即急诊</strong></li>
+            <li>导诊结果仅供参考，最终以执业医师面诊为准</li>
+            <li>可「添加到主屏幕」安装本应用，方便下次打开</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- SYMPTOM -->
+      <section class="view" id="view-symptom" data-title="症状导诊" data-sub="填写病情信息">
+        <form id="symptomForm" class="form-stack" autocomplete="off">
+          <label class="field">
+            <span>主诉 <em>*</em></span>
+            <textarea name="chief" id="chief" rows="3" placeholder="例如：咳嗽伴低热三天，或胸痛、呼吸困难…" required></textarea>
+          </label>
+          <div class="field-row">
+            <label class="field">
+              <span>病程时长 <em>*</em></span>
+              <select name="duration" id="duration" required>
+                <option value="">请选择</option>
+                <option>不到 24 小时</option>
+                <option>1–3 天</option>
+                <option>3–7 天</option>
+                <option>1–4 周</option>
+                <option>超过 1 个月</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>主要部位</span>
+              <select name="location" id="location">
+                <option value="">不详 / 全身</option>
+                <option>头部</option>
+                <option>胸部</option>
+                <option>腹部</option>
+                <option>咽喉</option>
+                <option>四肢</option>
+                <option>皮肤</option>
+                <option>其他</option>
+              </select>
+            </label>
+          </div>
+          <fieldset class="field">
+            <legend>严重程度 <em>*</em></legend>
+            <div class="seg" id="severitySeg">
+              <label><input type="radio" name="severity" value="轻" required /><span>轻</span></label>
+              <label><input type="radio" name="severity" value="中" /><span>中</span></label>
+              <label><input type="radio" name="severity" value="重" /><span>重</span></label>
+            </div>
+          </fieldset>
+          <fieldset class="field">
+            <legend>伴随症状（可多选）</legend>
+            <div class="chips" id="companionChips">
+              <label class="chip"><input type="checkbox" name="companions" value="发热" /><span>发热</span></label>
+              <label class="chip"><input type="checkbox" name="companions" value="咳嗽" /><span>咳嗽</span></label>
+              <label class="chip"><input type="checkbox" name="companions" value="头痛" /><span>头痛</span></label>
+              <label class="chip"><input type="checkbox" name="companions" value="恶心呕吐" /><span>恶心呕吐</span></label>
+              <label class="chip"><input type="checkbox" name="companions" value="乏力" /><span>乏力</span></label>
+              <label class="chip"><input type="checkbox" name="companions" value="胸闷" /><span>胸闷</span></label>
+              <label class="chip"><input type="checkbox" name="companions" value="呼吸困难" /><span>呼吸困难</span></label>
+              <label class="chip"><input type="checkbox" name="companions" value="意识不清" /><span>意识不清</span></label>
+            </div>
+          </fieldset>
+          <div class="quick-fill">
+            <span>快速演示：</span>
+            <button type="button" class="link-btn" id="fillUrgent">急危示例（胸痛）</button>
+            <button type="button" class="link-btn" id="fillMild">普通示例（咳嗽）</button>
+          </div>
+          <button type="submit" class="btn primary block" id="btnTriage">生成导诊建议</button>
+        </form>
+      </section>
+
+      <!-- CHAT -->
+      <section class="view view-chat" id="view-chat" data-title="智能问诊" data-sub="多轮澄清症状">
+        <div class="chat-shell">
+          <div class="chat-progress" id="chatProgress" aria-live="polite">
+            <div class="chat-progress-head">
+              <span class="chat-progress-label" id="chatProgressLabel">问诊进度</span>
+              <span class="chat-progress-pct" id="chatProgressPct">0%</span>
+            </div>
+            <div class="chat-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="chatProgressBar">
+              <div class="chat-progress-fill" id="chatProgressFill" style="width:0%"></div>
+            </div>
+            <div class="chat-steps" id="chatSteps">
+              <span class="chat-step active" data-step="1">主诉</span>
+              <span class="chat-step" data-step="2">时长</span>
+              <span class="chat-step" data-step="3">细节</span>
+              <span class="chat-step" data-step="4">小结</span>
+            </div>
+          </div>
+
+          <div class="chat-urgent hidden" id="chatUrgent" role="alert">
+            <div class="chat-urgent-inner">
+              <strong>🚨 建议立即急诊</strong>
+              <p>您的描述可能与急危重症相关。请马上前往就近急诊或拨打 120。</p>
+              <a class="btn danger sm" href="tel:120">拨打 120</a>
+            </div>
+          </div>
+
+          <div class="chat-messages" id="chatMessages" aria-live="polite"></div>
+          <div class="chat-summary hidden" id="chatSummary"></div>
+
+          <div class="chat-composer">
+            <div class="chat-input-bar">
+              <input type="text" id="chatInput" placeholder="描述你的不适…" maxlength="500" enterkeyhint="send" autocomplete="off" />
+              <button type="button" class="btn primary" id="btnSendChat" aria-label="发送">发送</button>
+            </div>
+            <p class="hint-inline">仅供参考，不能替代面诊</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- RESULT -->
+      <section class="view" id="view-result" data-title="导诊结果" data-sub="仅供参考，不能替代面诊">
+        <div id="resultContent"></div>
+      </section>
+
+      <!-- PRECONSULT REPORT -->
+      <section class="view" id="view-preconsult" data-title="预问诊报告" data-sub="可分享给医生">
+        <div id="preconsultContent"></div>
+      </section>
+
+      <!-- APPOINT -->
+      <section class="view" id="view-appoint" data-title="预约挂号" data-sub="选科室、医生与号源">
+        <div class="steps" id="appointSteps">
+          <span class="step active" data-step="1">科室</span>
+          <span class="step" data-step="2">医生</span>
+          <span class="step" data-step="3">时段</span>
+          <span class="step" data-step="4">确认</span>
+        </div>
+        <div id="appointPanel" class="appoint-panel"></div>
+      </section>
+
+      <!-- PATIENTS -->
+      <section class="view" id="view-patients" data-title="就诊人管理" data-sub="添加 / 切换家人">
+        <div id="patientsList" class="patients-list"></div>
+        <button type="button" class="btn primary block" id="btnAddPatient" style="margin-top:12px">＋ 添加就诊人</button>
+      </section>
+
+      <!-- PATIENT FORM -->
+      <section class="view" id="view-patient-form" data-title="编辑就诊人" data-sub="本人或家人">
+        <form id="patientForm" class="form-stack" autocomplete="off">
+          <input type="hidden" id="pfId" />
+          <label class="field">
+            <span>姓名 <em>*</em></span>
+            <input type="text" id="pfName" required maxlength="20" placeholder="真实姓名或常用名" />
+          </label>
+          <label class="field">
+            <span>关系 <em>*</em></span>
+            <select id="pfRelation" required>
+              <option value="本人">本人</option>
+              <option value="父母">父母</option>
+              <option value="配偶">配偶</option>
+              <option value="子女">子女</option>
+              <option value="其他">其他</option>
+            </select>
+          </label>
+          <div class="field-row">
+            <label class="field">
+              <span>性别</span>
+              <select id="pfGender">
+                <option value="">未填</option>
+                <option value="男">男</option>
+                <option value="女">女</option>
+                <option value="其他">其他</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>年龄</span>
+              <input type="number" id="pfAge" min="0" max="120" placeholder="岁" />
+            </label>
+          </div>
+          <label class="field">
+            <span>手机号（可选）</span>
+            <input type="tel" id="pfPhone" placeholder="用于预约回访演示" maxlength="20" />
+          </label>
+          <div class="actions-row">
+            <button type="submit" class="btn primary">保存</button>
+            <button type="button" class="btn ghost" id="btnCancelPatientForm">取消</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- PROFILE -->
+      <section class="view" id="view-profile" data-title="健康档案" data-sub="过敏 / 慢病 / 用药">
+        <div id="profileContent"></div>
+      </section>
+
+      <!-- REPORTS -->
+      <section class="view" id="view-reports" data-title="报告中心" data-sub="检验检查与解读">
+        <div class="segment-tabs" id="reportsTabs">
+          <button type="button" class="seg-tab active" data-tab="lab">检验检查</button>
+          <button type="button" class="seg-tab" data-tab="preconsult">预问诊报告</button>
+        </div>
+        <div id="reportsList" class="reports-list"></div>
+      </section>
+
+      <!-- REPORT DETAIL -->
+      <section class="view" id="view-report-detail" data-title="报告详情" data-sub="仅供参考">
+        <div id="reportDetailContent"></div>
+      </section>
+
+      <!-- WAITING -->
+      <section class="view" id="view-waiting" data-title="候诊报到" data-sub="队列信息仅供参考">
+        <div id="waitingContent"></div>
+      </section>
+
+      <!-- MESSAGES -->
+      <section class="view" id="view-messages" data-title="消息中心" data-sub="预约 · 检查 · 报告 · 配送">
+        <p class="m3-disclaimer msg-disclaimer" role="note">演示消息，非真实推送通道；仅供联调与演示。</p>
+        <div class="segment-tabs segment-tabs--scroll" id="msgTabs">
+          <button type="button" class="seg-tab active" data-filter="all">全部</button>
+          <button type="button" class="seg-tab" data-filter="appointment">预约</button>
+          <button type="button" class="seg-tab" data-filter="exam">检查</button>
+          <button type="button" class="seg-tab" data-filter="report">报告</button>
+          <button type="button" class="seg-tab" data-filter="delivery">配送</button>
+          <button type="button" class="seg-tab" data-filter="system">系统</button>
+        </div>
+        <div id="messagesList" class="messages-list"></div>
+      </section>
+
+      <!-- MESSAGE DETAIL -->
+      <section class="view" id="view-message-detail" data-title="消息详情" data-sub="">
+        <div id="messageDetailContent"></div>
+      </section>
+
+      <!-- NAVIGATION -->
+      <section class="view" id="view-nav" data-title="院内导航" data-sub="示意图 · 非真实 GIS">
+        <div class="nav-search-bar">
+          <input type="search" id="navSearch" placeholder="搜索科室 / 楼层…" enterkeyhint="search" autocomplete="off" />
+        </div>
+        <div class="nav-schematic" id="navSchematic" aria-hidden="true"></div>
+        <div id="navList" class="nav-dept-list"></div>
+      </section>
+
+      <!-- NAV DETAIL -->
+      <section class="view" id="view-nav-detail" data-title="科室位置" data-sub="路线提示">
+        <div id="navDetailContent"></div>
+      </section>
+
+      <!-- REFILLS -->
+      <section class="view" id="view-refills" data-title="复诊续方" data-sub="申请进度 · 非真实开方">
+        <div class="m3-disclaimer" role="note">
+          <strong>重要提示</strong>
+          <p>本功能仅提交续方<strong>申请</strong>，不构成处方；须经执业医师审核。急危重症请立即急诊或拨打 120。</p>
+        </div>
+        <div class="segment-tabs" id="refillTabs">
+          <button type="button" class="seg-tab active" data-tab="list">我的申请</button>
+          <button type="button" class="seg-tab" data-tab="form">新建申请</button>
+        </div>
+        <div id="refillsContent"></div>
+      </section>
+
+      <!-- MEDS -->
+      <section class="view" id="view-meds" data-title="用药提醒" data-sub="今日待服 · 仅供参考">
+        <div class="m3-disclaimer soft" role="note">
+          <p>用药提醒为辅助工具，请以医嘱与说明书为准；漏服或异常请咨询医生。</p>
+        </div>
+        <div class="segment-tabs" id="medsTabs">
+          <button type="button" class="seg-tab active" data-tab="today">今日待服</button>
+          <button type="button" class="seg-tab" data-tab="list">全部提醒</button>
+          <button type="button" class="seg-tab" data-tab="add">添加</button>
+        </div>
+        <div id="medsContent"></div>
+      </section>
+
+      <!-- FOLLOWUPS -->
+      <section class="view" id="view-followups" data-title="随访问卷" data-sub="诊后随访 · 仅供参考">
+        <div class="segment-tabs" id="followupTabs">
+          <button type="button" class="seg-tab active" data-tab="surveys">待填问卷</button>
+          <button type="button" class="seg-tab" data-tab="history">填写历史</button>
+        </div>
+        <div id="followupsContent"></div>
+      </section>
+
+      <!-- FOLLOWUP FORM -->
+      <section class="view" id="view-followup-form" data-title="填写问卷" data-sub="提交后可在历史查看">
+        <div id="followupFormContent"></div>
+      </section>
+
+      <!-- BILLS -->
+      <section class="view" id="view-bills" data-title="在线缴费" data-sub="演示环境 · 非真实扣款">
+        <div class="m3-disclaimer" role="note">
+          <strong>演示环境，非真实扣款</strong>
+          <p>本页账单与支付均为 Mock / 演示接口，不会连接真实支付网关或扣款。</p>
+        </div>
+        <div class="segment-tabs" id="billsTabs">
+          <button type="button" class="seg-tab active" data-filter="unpaid">待缴</button>
+          <button type="button" class="seg-tab" data-filter="paid">已缴</button>
+          <button type="button" class="seg-tab" data-filter="all">全部</button>
+        </div>
+        <div id="billsContent"></div>
+      </section>
+
+      <!-- BILL PAY / RECEIPT -->
+      <section class="view" id="view-bill-pay" data-title="确认支付" data-sub="模拟支付成功">
+        <div id="billPayContent"></div>
+      </section>
+
+      <!-- IDENTITY -->
+      <section class="view" id="view-identity" data-title="实名 / 就诊卡" data-sub="演示占位 · 不接公安">
+        <div class="m3-disclaimer" role="note">
+          <strong>演示占位</strong>
+          <p>不对接公安 / 医保实名核验；校验仅在前端做格式检查，数据可存本地或演示 API。</p>
+        </div>
+        <div id="identityContent"></div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section class="view" id="view-settings" data-title="设置与须知" data-sub="免责 · 合规 · 演示数据">
+        <div id="settingsContent"></div>
+      </section>
+
+
+      <!-- M5 CONSULT HUB -->
+      <section class="view" id="view-consult" data-title="问诊" data-sub="AI 导诊 · 医生接诊">
+        <div class="m3-disclaimer soft" role="note">
+          <strong>演示环境</strong>
+          <p>「智能问诊」为 AI 导诊；「图文/视频问诊」为医生接诊 Mock，非真实诊疗、非真实视频通话。</p>
+        </div>
+        <div class="card-grid" id="consultHub"></div>
+      </section>
+
+      <!-- M5 START -->
+      <section class="view" id="view-dc-start" data-title="发起问诊" data-sub="图文 / 视频 · 医生接诊">
+        <div class="m3-disclaimer" role="note">
+          <strong>演示环境，非真实诊疗 / 非真实视频通话</strong>
+          <p>本流程为在线接诊 Mock，不构成医疗建议；视频仅为占位画面与状态机。</p>
+        </div>
+        <div id="dcStartContent"></div>
+      </section>
+
+      <!-- M5 QUEUE -->
+      <section class="view" id="view-dc-queue" data-title="排队等候" data-sub="等待医生接诊">
+        <div class="m3-disclaimer soft" role="note">
+          <strong>演示排队</strong>
+          <p>演示环境，非真实诊疗。可等待模拟接诊，或手动点「模拟医生已接诊」。</p>
+        </div>
+        <div id="dcQueueContent"></div>
+      </section>
+
+      <!-- M5 SESSION -->
+      <section class="view view-chat" id="view-dc-session" data-title="接诊会话" data-sub="医生在线 · 演示">
+        <div id="dcSessionContent" class="dc-session-shell"></div>
+      </section>
+
+      <!-- M5 SUMMARY -->
+      <section class="view" id="view-dc-summary" data-title="接诊小结" data-sub="演示环境 · 非真实诊疗">
+        <div id="dcSummaryContent"></div>
+      </section>
+
+      <!-- M5 LIST -->
+      <section class="view" id="view-dc-list" data-title="我的接诊" data-sub="进行中 / 已结束">
+        <div class="m3-disclaimer soft" role="note">
+          <strong>演示环境，非真实诊疗</strong>
+          <p>会话优先走 API（8001），失败时使用本机 Mock。</p>
+        </div>
+        <div class="segment-tabs" id="dcListTabs">
+          <button type="button" class="seg-tab active" data-filter="active">进行中</button>
+          <button type="button" class="seg-tab" data-filter="ended">已结束</button>
+          <button type="button" class="seg-tab" data-filter="all">全部</button>
+        </div>
+        <div id="dcListContent"></div>
+      </section>
+
+
+      <!-- M6 EXAM ITEMS -->
+      <section class="view" id="view-exam" data-title="检查检验预约" data-sub="选项目 · 近 7 天号源">
+        <div class="m3-disclaimer" role="note">
+          <strong>演示环境，非真实院内预约 / HIS</strong>
+          <p>本页项目、号源与预约均为 Mock / 演示接口，不对接真实院内系统。</p>
+        </div>
+        <div class="segment-tabs" id="examCatTabs">
+          <button type="button" class="seg-tab active" data-cat="all">全部</button>
+          <button type="button" class="seg-tab" data-cat="lab">检验</button>
+          <button type="button" class="seg-tab" data-cat="imaging">检查</button>
+        </div>
+        <div id="examItemsContent"></div>
+        <button type="button" class="btn ghost block" id="examGoMine" style="margin-top:12px">查看我的检查</button>
+      </section>
+
+      <!-- M6 EXAM BOOK -->
+      <section class="view" id="view-exam-book" data-title="预约检查" data-sub="选日期与时段">
+        <div class="m3-disclaimer soft" role="note">
+          <strong>演示环境，非真实院内预约 / HIS</strong>
+          <p>请仔细阅读项目注意事项（空腹、憋尿、碘过敏等）。</p>
+        </div>
+        <div class="steps" id="examBookSteps">
+          <span class="step active" data-step="1">日期</span>
+          <span class="step" data-step="2">时段</span>
+          <span class="step" data-step="3">确认</span>
+        </div>
+        <div id="examBookContent"></div>
+      </section>
+
+      <!-- M6 EXAM SUCCESS -->
+      <section class="view" id="view-exam-success" data-title="预约成功" data-sub="演示环境 · 非真实 HIS">
+        <div id="examSuccessContent"></div>
+      </section>
+
+      <!-- M6 EXAM MINE -->
+      <section class="view" id="view-exam-mine" data-title="我的检查" data-sub="改约限次 · 可取消">
+        <div class="m3-disclaimer soft" role="note">
+          <strong>演示环境，非真实院内预约 / HIS</strong>
+          <p>改约默认最多 2 次；取消后不可再改约。</p>
+        </div>
+        <div class="segment-tabs" id="examMineTabs">
+          <button type="button" class="seg-tab active" data-filter="booked">已预约</button>
+          <button type="button" class="seg-tab" data-filter="cancelled">已取消</button>
+          <button type="button" class="seg-tab" data-filter="all">全部</button>
+        </div>
+        <div id="examMineContent"></div>
+        <button type="button" class="btn primary block" id="examMineGoBook" style="margin-top:12px">去预约检查检验</button>
+      </section>
+
+      <!-- M6 EXAM DETAIL / TIPS -->
+      <section class="view" id="view-exam-detail" data-title="预约详情" data-sub="注意事项 · 改约取消">
+        <div id="examDetailContent"></div>
+      </section>
+
+
+      <!-- M7 PHARMACY ORDERS -->
+      <section class="view" id="view-pharmacy" data-title="药品配送" data-sub="处方 / 购药单 · 演示">
+        <div class="m3-disclaimer" role="note">
+          <strong>演示环境，非真实处方流转 / 非真实物流配送</strong>
+          <p>本页购药单与配送均为 Mock / 演示接口，不接真实支付与真实物流。</p>
+        </div>
+        <div class="segment-tabs" id="pharmOrderTabs">
+          <button type="button" class="seg-tab active" data-filter="deliverable">可配送</button>
+          <button type="button" class="seg-tab" data-filter="all">全部</button>
+        </div>
+        <div id="pharmacyOrdersContent"></div>
+        <button type="button" class="btn ghost block" id="pharmGoDeliveries" style="margin-top:12px">查看我的配送</button>
+      </section>
+
+      <!-- M7 ADDRESS SELECT -->
+      <section class="view" id="view-pharmacy-address" data-title="选择收货地址" data-sub="确认后提交配送">
+        <div class="m3-disclaimer soft" role="note">
+          <strong>演示环境，非真实物流配送</strong>
+          <p>地址仅保存在本机演示数据中；不接真实支付。</p>
+        </div>
+        <div id="pharmacyAddressContent"></div>
+      </section>
+
+      <!-- M7 ADDRESS FORM -->
+      <section class="view" id="view-pharmacy-address-form" data-title="新增地址" data-sub="简易收件信息">
+        <div class="m3-disclaimer soft" role="note">
+          <strong>演示环境</strong>
+          <p>新增地址写入本地 Mock / 演示接口，非真实地址库。</p>
+        </div>
+        <div id="pharmacyAddressFormContent"></div>
+      </section>
+
+      <!-- M7 DELIVERIES LIST -->
+      <section class="view" id="view-pharmacy-deliveries" data-title="我的配送" data-sub="物流状态追踪">
+        <div class="m3-disclaimer soft" role="note">
+          <strong>演示环境，非真实处方流转 / 非真实物流配送</strong>
+          <p>可点进详情查看时间轴，并用「模拟物流推进」演示状态流转。</p>
+        </div>
+        <div class="segment-tabs" id="pharmDelivTabs">
+          <button type="button" class="seg-tab active" data-filter="active">进行中</button>
+          <button type="button" class="seg-tab" data-filter="delivered">已送达</button>
+          <button type="button" class="seg-tab" data-filter="all">全部</button>
+        </div>
+        <div id="pharmacyDeliveriesContent"></div>
+        <button type="button" class="btn primary block" id="pharmDelivGoOrders" style="margin-top:12px">去选购药单配送</button>
+      </section>
+
+      <!-- M7 DELIVERY DETAIL -->
+      <section class="view" id="view-pharmacy-delivery" data-title="物流追踪" data-sub="时间轴 · 模拟推进">
+        <div id="pharmacyDeliveryContent"></div>
+      </section>
+
+
+      <!-- CHRONIC CHECK-IN M10 -->
+      <section class="view" id="view-chronic" data-title="慢病打卡" data-sub="血压 / 血糖 · 演示">
+        <div class="m3-disclaimer soft" role="note">
+          <strong>演示数据，非真实慢病管理</strong>
+          <p>打卡与趋势仅供演示，不能替代面诊、监测设备或专科慢病管理方案。</p>
+        </div>
+        <div class="chronic-patient-bar" id="chronicPatientBar"></div>
+        <div class="segment-tabs" id="chronicTabs">
+          <button type="button" class="seg-tab active" data-tab="bp">血压</button>
+          <button type="button" class="seg-tab" data-tab="glucose">血糖</button>
+          <button type="button" class="seg-tab" data-tab="trend">趋势</button>
+        </div>
+        <div id="chronicAbnormalBanner" class="chronic-abnormal hidden" role="alert"></div>
+        <div id="chronicContent"></div>
+        <p class="chronic-source" id="chronicSourceHint"></p>
+      </section>
+
+      <!-- MINE hub -->
+      <section class="view" id="view-mine" data-title="我的" data-sub="配送 · 检查 · 接诊 · 缴费">
+        <div class="mine-hub" id="mineHub"></div>
+        <h3 class="section-label">我的预约</h3>
+        <div id="mineList" class="mine-list"></div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" id="bottomNav" aria-label="主导航">
+      <button type="button" class="nav-item active" data-nav="home"><span aria-hidden="true">🏠</span>首页</button>
+      <button type="button" class="nav-item" data-nav="consult"><span aria-hidden="true">💬</span>问诊</button>
+      <button type="button" class="nav-item" data-nav="reports"><span aria-hidden="true">🧪</span>报告</button>
+      <button type="button" class="nav-item nav-item-badge" data-nav="messages">
+        <span aria-hidden="true">🔔</span>消息
+        <span class="badge hidden" id="msgBadgeNav">0</span>
+      </button>
+      <button type="button" class="nav-item" data-nav="mine"><span aria-hidden="true">👤</span>我的</button>
+    </nav>
+
+    <div class="toast hidden" id="toast" role="status"></div>
+    <div class="loading-mask hidden" id="loadingMask"><div class="spinner"></div><p>正在分析…</p></div>
+  </div>
+  <script src="config.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
