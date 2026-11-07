@@ -1,1 +1,2 @@
-window.MEDICAL_CONFIG = { API_BASE_URL: '/patient-api', DOCTOR_API_BASE_URL: '/doctor-api' };
+/* 部署（compose/nginx）运行时配置：浏览器只走同源反代 */
+window.APP_CONFIG = { patientApiBase: '/patient-api', doctorApiBase: '/doctor-api' };

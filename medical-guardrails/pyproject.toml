@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "medical-guardrails"
+version = "0.2.0"
+description = "Offline rule-based input/output guardrails shared by medical-patient-api and medical-assistant-api"
+requires-python = ">=3.9"
+dependencies = ["jsonschema>=4.0"]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.setuptools]
+packages = ["guardrails"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
