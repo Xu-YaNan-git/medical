@@ -1,0 +1,33 @@
+# Secrets (examples are safe templates)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+# Python / dependencies
+.venv/
+venv/
+node_modules/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+# Runtime data and smoke outputs
+**/data/
+**/logs/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.log
+*.last.env
+*.last.log
+.bak*/
+*.bak
+.DS_Store
