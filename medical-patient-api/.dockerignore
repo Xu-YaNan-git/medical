@@ -1,0 +1,16 @@
+# Docker 构建上下文排除项（仅影响 docker build，不影响本地运行）
+.venv
+.venv/
+data
+data/
+**/__pycache__
+**/*.pyc
+*.db
+*.db-*
+.git
+.gitignore
+.pytest_cache
+tests
+*.log
+.env
+.env.*
