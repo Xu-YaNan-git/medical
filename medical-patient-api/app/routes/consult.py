@@ -56,6 +56,20 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def _llm_public(result: dict | None, *, skipped: bool = False) -> dict:
+    """Explicit model/fallback marker for the HTTP response. No secrets."""
+    if skipped or not result:
+        return {"fallback": False, "llmCalled": False, "llmStatus": "skipped"}
+    status = result.get("llmStatus")
+    if status not in ("ok", "error", "skipped"):
+        status = "ok" if result.get("source") == "llm" else "skipped"
+    return {
+        "fallback": bool(result.get("fallback")),
+        "llmCalled": bool(result.get("llmCalled")),
+        "llmStatus": status,
+    }
+
+
 @router.post("/sessions")
 def create_session(body: CreateSessionRequest = CreateSessionRequest()) -> dict:
     patient_id = None
@@ -123,6 +137,14 @@ async def post_message(
 
     if gi["action"] != gr.ALLOW:
         # Short-circuit: NO LLM call, session not advanced, no auto pre-consult.
+        ai_service.log_consult_llm(
+            llm_called=False,
+            llm_status="skipped",
+            fallback=False,
+            turns=int(sess.get("turns") or 0),
+            history_count=len(sess.get("messages") or []),
+            error_code="guardrail",
+        )
         reply_text = guardrail_flow.consult_blocked_reply(gi)
         asst_msg = {"role": "assistant", "content": reply_text, "createdAt": now, "guardrail": gfield}
         sess["messages"].append(asst_msg)
@@ -141,6 +163,7 @@ async def post_message(
             "error": None,
             "message": reply_text,
             "guardrail": gfield,
+            **_llm_public(None, skipped=True),
         }
         if not want_stream:
             return payload
@@ -201,6 +224,7 @@ async def post_message(
                     "error": final.get("error"),
                     "message": final.get("message"),
                     "guardrail": gfield,
+                    **_llm_public(final),
                 }
                 yield _sse("final", payload)
                 yield _sse("done", {"ok": True})
@@ -250,6 +274,7 @@ async def post_message(
         "error": result.get("error"),
         "message": result.get("message"),
         "guardrail": gfield,
+        **_llm_public(result),
     }
 
 
