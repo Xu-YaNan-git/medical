@@ -9,6 +9,7 @@ from typing import Any, Iterator, Optional
 
 from app import ai_mock
 from app import llm as llm_client
+from app.log_config import configure_app_logging
 
 logger = logging.getLogger(__name__)
 
@@ -335,6 +336,7 @@ def log_consult_llm(
     error_code: str = "-",
 ) -> None:
     """Grep-friendly consult trace. No utterance text, keys, or tokens."""
+    configure_app_logging()
     code = error_code or "-"
     if code not in ("-", "llm_fallback", "llm_not_configured", "guardrail"):
         code = "llm_error"

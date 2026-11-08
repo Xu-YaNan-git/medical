@@ -35,6 +35,11 @@ from app.routes import demo as demo_routes
 from app.routes import chronic as chronic_routes
 from app.routes import doctor_chronic as doctor_chronic_routes
 from app.routes import guardrails as guardrails_routes
+from app.log_config import configure_app_logging
+
+# Uvicorn's default config does not emit app.* INFO. Do this at import so the
+# container process (``uvicorn app.main:app``) writes consult_llm to stdout.
+configure_app_logging()
 
 app = FastAPI(
     title="看病用户端 · 导诊台 API",
