@@ -9,6 +9,7 @@ from typing import Any, Iterator, Optional
 
 from app import ai_mock
 from app import llm as llm_client
+from app.log_config import configure_app_logging
 
 logger = logging.getLogger(__name__)
 
@@ -256,7 +257,13 @@ def _accumulate_facts(session: dict[str, Any], content: str) -> tuple[int, dict[
     facts["blob"] = blob_preview
 
     if turns == 1 or not facts.get("chief"):
-        facts.setdefault("chief", content[:80])
+        facts["chief"] = content[:80]
+    elif ai_mock.symptom_shifted(facts, content):
+        # A changed complaint must replace the first-turn chief, not sit in extra.
+        facts["chief"] = content[:80]
+        for stale in ("bodyPart", "duration", "severity"):
+            facts.pop(stale, None)
+        facts["extra"] = content[:200]
     else:
         facts["extra"] = ((facts.get("extra") or "") + " " + content).strip()
 
@@ -292,64 +299,112 @@ def _accumulate_facts(session: dict[str, Any], content: str) -> tuple[int, dict[
     return turns, facts, blob_preview
 
 
-def _info_enough(facts: dict[str, Any], turns: int, blob: str) -> bool:
-    if _has_emergency(blob) and turns >= 1:
-        # Rich emergency message can complete early
-        if any(k in blob for k in ("大汗", "呼吸困难", "意识", "昏迷", "大出血")):
-            return True
-        return turns >= 2
-    if turns >= 4:
-        return True
-    if turns < 2:
-        return False
-    has_core = bool(facts.get("chief")) and bool(facts.get("bodyPart") or facts.get("duration"))
-    has_depth = bool(
-        facts.get("severity") or facts.get("accompanying") or facts.get("redFlags") or facts.get("extra")
-    )
-    return has_core and has_depth
+MAX_CONSULT_TURNS = 6
+
+_EMERGENCY_NOTICE = (
+    "根据您刚才描述的症状，可能存在需要紧急处理的情况。"
+    "请立即前往急诊或拨打 120，不要等待线上回复。"
+)
+
+CONSULT_SYSTEM = (
+    SYSTEM_PREAMBLE
+    + "任务：多轮症状问诊。下面的 messages 是完整对话，必须逐条阅读。"
+    "最后一条 user 是患者本轮最新输入，优先级最高；它和较早主诉矛盾、加重、减轻、转移部位或新增症状时，"
+    "reply 必须先点明这一变化，再只针对最新症状追问或给建议。"
+    "禁止复读与当前症状无关的固定问句，禁止把已被患者更正的旧症状继续当作主诉。"
+    "每次最多追问 1～2 个问题。信息已经够形成导诊建议时 done=true。"
+    "出现急危症状时 done=true，reply 必须写明立即急诊或拨打 120，triage.urgency=emergency，"
+    "且 chiefComplaint 写当前这一轮的主要不适。"
+    "返回 JSON："
+    '{"reply":"...","done":false,"askedSlots":[],"triage":null} 或 '
+    '{"reply":"...","done":true,"askedSlots":[],'
+    '"triage":{"chiefComplaint":"...","accompanying":["..."],'
+    '"departments":[{"id":"dept-gi","name":"消化内科","reason":"...","rank":1}],'
+    '"urgency":"emergency|urgent|routine","suggestOnline":false,'
+    '"nextSteps":["..."],"summary":"..."}}。'
+    "不诊断、不开药。"
+)
 
 
-def _known_slots(facts: dict[str, Any]) -> dict[str, Any]:
-    keys = (
-        "chief",
-        "duration",
-        "bodyPart",
-        "severity",
-        "accompanying",
-        "redFlags",
-        "extra",
-        "askedSlots",
+def log_consult_llm(
+    *,
+    llm_called: bool,
+    llm_status: str,
+    fallback: bool,
+    turns: int,
+    history_count: int,
+    error_code: str = "-",
+) -> None:
+    """Grep-friendly consult trace. No utterance text, keys, or tokens."""
+    configure_app_logging()
+    code = error_code or "-"
+    if code not in ("-", "llm_fallback", "llm_not_configured", "guardrail"):
+        code = "llm_error"
+    logger.info(
+        "consult_llm llm_called=%s llm_status=%s fallback=%s turns=%s history_count=%s error_code=%s",
+        "true" if llm_called else "false",
+        llm_status,
+        "true" if fallback else "false",
+        int(turns or 0),
+        int(history_count or 0),
+        code,
     )
-    return {k: facts.get(k) for k in keys if facts.get(k) not in (None, "", [])}
 
 
-def _consult_prompt(facts: dict[str, Any], turns: int, force_done: bool, history: str, content: str) -> tuple[str, str]:
-    known = _known_slots(facts)
-    system = (
-        SYSTEM_PREAMBLE
-        + "任务：多轮症状澄清问诊。"
-        "规则："
-        "1) 只问尚未掌握的信息，禁止重复已问过或患者已回答的内容；"
-        "2) 每次最多问 1～2 个聚焦问题；"
-        "3) 已掌握主诉+部位或时长+（程度/伴随/危险症状否定或肯定）即可 done=true；"
-        "4) 出现急危症状必须 done=true 且 urgency=emergency；"
-        "5) done=true 时 triage 必须含结构化小结："
-        "chiefComplaint、accompanying（数组）、departments、urgency、suggestOnline、nextSteps、summary。"
-        "返回 JSON："
-        '{"reply":"...","done":false,"askedSlots":["duration"],"triage":null} 或 '
-        '{"reply":"...","done":true,"askedSlots":[],'
-        '"triage":{"chiefComplaint":"...","accompanying":["..."],'
-        '"departments":[{"id":"dept-gi","name":"消化内科","reason":"...","rank":1}],'
-        '"urgency":"emergency|urgent|routine","suggestOnline":false,'
-        '"nextSteps":["..."],"summary":"..."}}。'
-        "不诊断不开药。"
-    )
-    user = (
-        f"已掌握信息（勿再问）：{json.dumps(known, ensure_ascii=False)}\n"
-        f"轮次：{turns}\n建议结束：{force_done}\n"
-        f"历史：\n{history}\n本轮患者：{content}"
-    )
-    return system, user
+def _consult_messages(session: dict[str, Any], content: str) -> list[dict[str, str]]:
+    """Full user/assistant history, with the latest user text as the last turn."""
+    out: list[dict[str, str]] = []
+    for raw in session.get("messages") or []:
+        role = str(raw.get("role") or "")
+        text = str(raw.get("content") or "").strip()
+        if role not in ("user", "assistant") or not text:
+            continue
+        if out and out[-1]["role"] == role and out[-1]["content"] == text:
+            continue
+        out.append({"role": role, "content": text})
+    content = (content or "").strip()
+    if content and (not out or out[-1]["role"] != "user" or out[-1]["content"] != content):
+        out.append({"role": "user", "content": content})
+    if len(out) > 16:
+        out = out[-16:]
+    while out and out[0]["role"] != "user":
+        out = out[1:]
+    return out
+
+
+def _with_emergency_notice(reply: str, text: str) -> str:
+    if not _has_emergency(text):
+        return reply
+    if "急诊" in reply or "120" in reply:
+        return reply
+    return _EMERGENCY_NOTICE + "\n\n" + (reply or "")
+
+
+def _llm_turn_flags(*, called: bool, status: str, fallback: bool) -> dict[str, Any]:
+    return {"llmCalled": called, "llmStatus": status, "fallback": fallback}
+
+
+def _pack_mock_turn(
+    session: dict[str, Any],
+    mock: dict[str, Any],
+    *,
+    reason: str,
+    code: str,
+    called: bool,
+    status: str,
+) -> dict[str, Any]:
+    meta = _meta_mock(reason, code)
+    triage = mock.get("triage")
+    if isinstance(triage, dict):
+        triage = {**triage, **meta}
+    return {
+        "reply": mock["reply"],
+        "status": mock.get("status") or session.get("status") or "active",
+        "triage": triage,
+        "disclaimer": DISCLAIMER,
+        **meta,
+        **_llm_turn_flags(called=called, status=status, fallback=True),
+    }
 
 
 def _finalize_done(
@@ -378,6 +433,11 @@ def _finalize_done(
     # Prefer session-known accompanying if model omitted
     if not triage.get("accompanying") and facts.get("accompanying"):
         triage["accompanying"] = list(facts["accompanying"])
+    latest_chief = str(facts.get("chief") or content or "").strip()
+    model_chief = str(triage.get("chiefComplaint") or "")
+    fresh_keys = [k for k in ai_mock._SYMPTOM_KEYS if k in (content or "")]
+    if latest_chief and fresh_keys and not any(k in model_chief for k in fresh_keys):
+        triage["chiefComplaint"] = latest_chief[:80]
     if _has_emergency(blob_preview):
         triage["urgency"] = "emergency"
         triage["suggestOnline"] = False
@@ -401,83 +461,118 @@ def consult_turn(session: dict[str, Any], user_content: str) -> dict[str, Any]:
     """
     One user turn. Mutates session turns/facts/status/triage (like ai_mock.consult_reply).
     Does NOT append to session["messages"] — routes own message list.
+
+    The model sees the full user/assistant history, with this turn's text last.
+    Slot completeness no longer forces an early summary, so a changed complaint
+    can still change the next question. Emergency wording still ends the turn
+    with an ER notice.
     """
     content = (user_content or "").strip()
     if not content:
         raise ValueError("消息不能为空")
 
-    if llm_client.is_configured():
-        try:
-            turns, facts, blob_preview = _accumulate_facts(session, content)
-            history_msgs = session.get("messages") or []
-            history = "\n".join(
-                f"{m.get('role')}: {m.get('content')}" for m in history_msgs[-16:]
+    history = _consult_messages(session, content)
+    history_count = len(history)
+    flags_ok = _llm_turn_flags(called=True, status="ok", fallback=False)
+
+    if not llm_client.is_configured():
+        mock = ai_mock.consult_reply(session, content)
+        log_consult_llm(
+            llm_called=False,
+            llm_status="skipped",
+            fallback=True,
+            turns=int(session.get("turns") or 0),
+            history_count=history_count,
+            error_code="llm_not_configured",
+        )
+        return _pack_mock_turn(
+            session,
+            mock,
+            reason="未配置 LLM_API_KEY，使用规则模板",
+            code="llm_not_configured",
+            called=False,
+            status="skipped",
+        )
+
+    accumulated = False
+    try:
+        data = llm_client.chat_json_messages(CONSULT_SYSTEM, history)
+        reply = str(data.get("reply") or "").strip()
+        if not reply:
+            raise ValueError("澄清回复为空")
+        turns, facts, blob_preview = _accumulate_facts(session, content)
+        accumulated = True
+        asked = list(facts.get("askedSlots") or [])
+        for slot in data.get("askedSlots") or []:
+            slot = str(slot).strip()
+            if slot and slot not in asked:
+                asked.append(slot)
+        facts["askedSlots"] = asked
+
+        reply = _with_emergency_notice(reply, blob_preview)
+        urgent = _has_emergency(content) or _has_emergency(blob_preview)
+        done = bool(data.get("done")) or turns >= MAX_CONSULT_TURNS or urgent
+        if done:
+            result = _finalize_done(
+                session,
+                reply=reply,
+                raw_triage=data.get("triage"),
+                blob_preview=blob_preview,
+                facts=facts,
+                content=content,
+                source_meta=_meta_llm(),
             )
-            force_done = _info_enough(facts, turns, blob_preview)
-            system, user = _consult_prompt(facts, turns, force_done, history, content)
-            data = llm_client.chat_json(system, user)
-            reply = str(data.get("reply") or "").strip()
-            if not reply:
-                raise ValueError("澄清回复为空")
+            result.update(flags_ok)
+            log_consult_llm(
+                llm_called=True,
+                llm_status="ok",
+                fallback=False,
+                turns=turns,
+                history_count=history_count,
+            )
+            return result
 
-            # Track asked slots from model
-            asked = list(facts.get("askedSlots") or [])
-            for s in data.get("askedSlots") or []:
-                s = str(s).strip()
-                if s and s not in asked:
-                    asked.append(s)
-            facts["askedSlots"] = asked
-
-            done = bool(data.get("done")) or force_done
-            if done:
-                return _finalize_done(
-                    session,
-                    reply=reply,
-                    raw_triage=data.get("triage"),
-                    blob_preview=blob_preview,
-                    facts=facts,
-                    content=content,
-                    source_meta=_meta_llm(),
-                )
-
-            session["status"] = "active"
-            return {
-                "reply": reply,
-                "status": "active",
-                "triage": None,
-                "disclaimer": DISCLAIMER,
-                **_meta_llm(),
-            }
-        except Exception as exc:
-            reason = f"LLM 问诊失败，已降级规则：{llm_client.sanitize_error(exc)}"
-            logger.warning("consult_turn fallback: %s", reason)
-            session["turns"] = max(0, int(session.get("turns") or 1) - 1)
-            mock = ai_mock.consult_reply(session, content)
-            out = {
-                "reply": mock["reply"],
-                "status": mock.get("status") or session.get("status") or "active",
-                "triage": mock.get("triage"),
-                "disclaimer": DISCLAIMER,
-                **_meta_mock(reason),
-            }
-            if out.get("triage") and isinstance(out["triage"], dict):
-                out["triage"] = {**out["triage"], **_meta_mock(reason)}
-            return out
-
-    mock = ai_mock.consult_reply(session, content)
-    out = {
-        "reply": mock["reply"],
-        "status": mock.get("status") or session.get("status") or "active",
-        "triage": mock.get("triage"),
-        "disclaimer": DISCLAIMER,
-        **_meta_mock("未配置 LLM_API_KEY，使用规则 Mock", "llm_not_configured"),
-    }
-    if out.get("triage") and isinstance(out["triage"], dict):
-        out["triage"] = {
-            **out["triage"],
-            **_meta_mock("未配置 LLM_API_KEY，使用规则 Mock", "llm_not_configured"),
+        session["status"] = "active"
+        log_consult_llm(
+            llm_called=True,
+            llm_status="ok",
+            fallback=False,
+            turns=turns,
+            history_count=history_count,
+        )
+        return {
+            "reply": reply,
+            "status": "active",
+            "triage": None,
+            "disclaimer": DISCLAIMER,
+            **_meta_llm(),
+            **flags_ok,
         }
-    return out
+    except Exception as exc:
+        reason = f"LLM 问诊失败，已降级规则：{llm_client.sanitize_error(exc)}"
+        if accumulated:
+            session["turns"] = max(0, int(session.get("turns") or 1) - 1)
+            facts = session.setdefault("facts", {})
+            blob = str(facts.get("blob") or "")
+            if content and blob.endswith(content):
+                facts["blob"] = blob[: -len(content)].strip()
+        mock = ai_mock.consult_reply(session, content)
+        log_consult_llm(
+            llm_called=True,
+            llm_status="error",
+            fallback=True,
+            turns=int(session.get("turns") or 0),
+            history_count=history_count,
+            error_code="llm_fallback",
+        )
+        return _pack_mock_turn(
+            session,
+            mock,
+            reason=reason,
+            code="llm_fallback",
+            called=True,
+            status="error",
+        )
 
 
 def _chunk_text(text: str, size: int = 8) -> Iterator[str]:
@@ -490,96 +585,11 @@ def consult_turn_stream(session: dict[str, Any], user_content: str) -> Iterator[
     Streaming consult turn. Yields event dicts:
       {"type":"token","text":"..."}
       {"type":"final","reply":...,"status":...,"triage":...,"disclaimer":...,"source":...}
-    Mutates session like consult_turn. Caller appends messages.
+    Same decision as consult_turn (one model call), then chunks the reply.
     """
-    content = (user_content or "").strip()
-    if not content:
-        raise ValueError("消息不能为空")
-
-    # Prefer: non-stream JSON decision for structure, then stream the reply text for UX.
-    # If LLM fails, mock path chunks reply.
-    if llm_client.is_configured():
-        try:
-            turns, facts, blob_preview = _accumulate_facts(session, content)
-            history_msgs = session.get("messages") or []
-            history = "\n".join(
-                f"{m.get('role')}: {m.get('content')}" for m in history_msgs[-16:]
-            )
-            force_done = _info_enough(facts, turns, blob_preview)
-            system, user = _consult_prompt(facts, turns, force_done, history, content)
-            data = llm_client.chat_json(system, user)
-            reply = str(data.get("reply") or "").strip()
-            if not reply:
-                raise ValueError("澄清回复为空")
-
-            asked = list(facts.get("askedSlots") or [])
-            for s in data.get("askedSlots") or []:
-                s = str(s).strip()
-                if s and s not in asked:
-                    asked.append(s)
-            facts["askedSlots"] = asked
-
-            done = bool(data.get("done")) or force_done
-            if done:
-                final = _finalize_done(
-                    session,
-                    reply=reply,
-                    raw_triage=data.get("triage"),
-                    blob_preview=blob_preview,
-                    facts=facts,
-                    content=content,
-                    source_meta=_meta_llm(),
-                )
-                reply = final["reply"]
-            else:
-                session["status"] = "active"
-                final = {
-                    "reply": reply,
-                    "status": "active",
-                    "triage": None,
-                    "disclaimer": DISCLAIMER,
-                    **_meta_llm(),
-                }
-
-            # Stream reply tokens (synthetic chunking of finalized reply for stable JSON SSE)
-            # Optionally also try live stream for narrative-only; we keep structure-first.
-            for piece in _chunk_text(reply, 12):
-                yield {"type": "token", "text": piece}
-            yield {"type": "final", **final}
-            return
-        except Exception as exc:
-            reason = f"LLM 问诊失败，已降级规则：{llm_client.sanitize_error(exc)}"
-            logger.warning("consult_turn_stream fallback: %s", reason)
-            session["turns"] = max(0, int(session.get("turns") or 1) - 1)
-            mock = ai_mock.consult_reply(session, content)
-            final = {
-                "reply": mock["reply"],
-                "status": mock.get("status") or session.get("status") or "active",
-                "triage": mock.get("triage"),
-                "disclaimer": DISCLAIMER,
-                **_meta_mock(reason),
-            }
-            if final.get("triage") and isinstance(final["triage"], dict):
-                final["triage"] = {**final["triage"], **_meta_mock(reason)}
-            for piece in _chunk_text(final["reply"], 12):
-                yield {"type": "token", "text": piece}
-            yield {"type": "final", **final}
-            return
-
-    mock = ai_mock.consult_reply(session, content)
-    final = {
-        "reply": mock["reply"],
-        "status": mock.get("status") or session.get("status") or "active",
-        "triage": mock.get("triage"),
-        "disclaimer": DISCLAIMER,
-        **_meta_mock("未配置 LLM_API_KEY，使用规则 Mock", "llm_not_configured"),
-    }
-    if final.get("triage") and isinstance(final["triage"], dict):
-        final["triage"] = {
-            **final["triage"],
-            **_meta_mock("未配置 LLM_API_KEY，使用规则 Mock", "llm_not_configured"),
-        }
-    for piece in _chunk_text(final["reply"], 12):
+    final = consult_turn(session, user_content)
+    reply = str(final.get("reply") or "")
+    for piece in _chunk_text(reply, 12):
         yield {"type": "token", "text": piece}
     yield {"type": "final", **final}
 

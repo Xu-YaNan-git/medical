@@ -41,13 +41,15 @@ def get_model() -> str:
 
 
 def sanitize_error(exc: BaseException) -> str:
-    """Human-readable error without credentials."""
+    """Human-readable error without credentials or bearer tokens."""
     msg = str(exc) or type(exc).__name__
     key = get_api_key()
     if key:
         msg = msg.replace(key, "[REDACTED]")
+    msg = re.sub(r"\bsk-[A-Za-z0-9_\-]{6,}\b", "[REDACTED]", msg)
     msg = re.sub(r"(Bearer\s+)\S+", r"\1[REDACTED]", msg, flags=re.I)
     msg = re.sub(r"(api[_-]?key[\"'=:\s]+)[^\s\"']+", r"\1[REDACTED]", msg, flags=re.I)
+    msg = re.sub(r"(?i)((?:access[_-]?)?token[\"'=:\s]+)[^\s\"']+", r"\1[REDACTED]", msg)
     if len(msg) > 400:
         msg = msg[:400] + "…"
     return msg
@@ -79,20 +81,34 @@ def _parse_json_object(content: str) -> dict[str, Any]:
     return data
 
 
-def chat_json(
+def _completion_messages(
     system: str,
-    user: str,
+    messages: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    """System prompt plus user/assistant turns. Drops empty or unknown roles."""
+    payload: list[dict[str, str]] = [{"role": "system", "content": system}]
+    for raw in messages or []:
+        role = str(raw.get("role") or "")
+        content = str(raw.get("content") or "").strip()
+        if role not in ("user", "assistant") or not content:
+            continue
+        payload.append({"role": role, "content": content})
+    if len(payload) < 2:
+        raise ValueError("问诊消息为空")
+    return payload
+
+
+def chat_json_messages(
+    system: str,
+    messages: list[dict[str, str]],
     *,
     temperature: float = 0.2,
 ) -> dict[str, Any]:
-    """Call chat completions and parse a JSON object from the assistant message."""
+    """Chat completions with a real multi-turn history; parse a JSON object."""
     client = create_client()
     kwargs: dict[str, Any] = {
         "model": get_model(),
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
+        "messages": _completion_messages(system, messages),
         "temperature": temperature,
     }
     try:
@@ -105,6 +121,20 @@ def chat_json(
 
     content = (resp.choices[0].message.content or "").strip()
     return _parse_json_object(content)
+
+
+def chat_json(
+    system: str,
+    user: str,
+    *,
+    temperature: float = 0.2,
+) -> dict[str, Any]:
+    """Single-turn JSON call. Prefer chat_json_messages when history exists."""
+    return chat_json_messages(
+        system,
+        [{"role": "user", "content": user}],
+        temperature=temperature,
+    )
 
 
 def chat_text(

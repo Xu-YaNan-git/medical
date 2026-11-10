@@ -47,6 +47,28 @@ _EMERGENCY_KEYWORDS = [
     "大汗",
 ]
 
+_CHANGE_RE = re.compile(
+    r"(现在|变成|改为|改成|其实|不是.{0,16}(?:是|了)|转成|开始出现|新出现|又出现|加重|减轻|不再)"
+)
+_PARTS = ("头", "胸", "腹", "肚", "腰", "背", "腿", "喉", "鼻", "皮肤", "胃", "眼", "关节")
+_SYMPTOM_KEYS = (
+    "头痛", "头疼", "头晕", "胸痛", "胸口", "胸闷", "腹痛", "肚子疼", "胃痛",
+    "腹泻", "拉肚子", "咳嗽", "咳痰", "皮疹", "瘙痒", "发热", "发烧",
+    "恶心", "呕吐", "关节痛", "腰痛", "尿频", "尿痛",
+)
+
+
+def symptom_shifted(facts: dict[str, Any], content: str) -> bool:
+    """True when the latest utterance changes the complaint already on file."""
+    text = content or ""
+    if _CHANGE_RE.search(text):
+        return True
+    old = "".join(str(facts.get(k) or "") for k in ("chief", "bodyPart", "extra"))
+    if any(part in text and part not in old for part in _PARTS):
+        return True
+    return any(key in text and key not in old for key in _SYMPTOM_KEYS)
+
+
 # Clarifying slots: ask only what is still missing
 _SLOT_QUESTIONS: list[tuple[str, str]] = [
     ("bodyPart", "请问主要不舒服的部位在哪里？"),
@@ -381,7 +403,13 @@ def consult_reply(session: dict[str, Any], user_content: str) -> dict[str, Any]:
     facts["blob"] = (history_text + " " + content).strip()
 
     if turns == 1 or not facts.get("chief"):
-        facts.setdefault("chief", content[:80])
+        facts["chief"] = content[:80]
+    elif symptom_shifted(facts, content):
+        # Latest complaint replaces the frozen first-turn chief used for triage.
+        facts["chief"] = content[:80]
+        for stale in ("bodyPart", "duration", "severity"):
+            facts.pop(stale, None)
+        facts["extra"] = content[:200]
     else:
         facts["extra"] = ((facts.get("extra") or "") + " " + content).strip()
 
@@ -488,10 +516,8 @@ def consult_reply(session: dict[str, Any], user_content: str) -> dict[str, Any]:
     if slot == "accompanying":
         facts["accompanyingAsked"] = True
 
-    if turns == 1:
-        reply = f"收到：「{content[:60]}{'…' if len(content) > 60 else ''}」。{question}"
-    else:
-        reply = f"明白了。{question}"
+    snippet = content[:48] + ("…" if len(content) > 48 else "")
+    reply = f"收到您刚说的「{snippet}」。{question}"
 
     return {
         "reply": reply,
